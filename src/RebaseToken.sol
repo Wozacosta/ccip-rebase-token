@@ -57,6 +57,18 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         emit InterestRateSet(_newInterestRate);
     }
 
+    /**
+     * @dev returns the principal balance of the user. The principal balance is the last
+     * updated stored balance, which does not consider the perpetually accruing interest that has not yet been minted.
+     * @param _user the address of the user
+     * @return the principal balance of the user
+     *
+     */
+
+    function principalBalanceOf(address _user) external view returns (uint256) {
+        return super.balanceOf(_user);
+    }
+
     /*
      * @notice Mint user tokens when they deposit into the vault
      * @param _to The user to mint tokens to
@@ -128,6 +140,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
             // Update the users interest rate only if they have not yet got one (or they tranferred/burned all their tokens). Otherwise people could force others to have lower interest.
             s_userInterestRate[_recipient] = s_userInterestRate[msg.sender];
             // NOTE: doing it in other cases would be an attack vector to lower the interest rate of others.
+            // NOTE: should check the logic here
         }
         return super.transfer(_recipient, _amount);
     }
@@ -153,6 +166,7 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         _mintAccruedInterest(_recipient);
         if (balanceOf(_recipient) == 0) {
             // Update the users interest rate only if they have not yet got one (or they tranferred/burned all their tokens). Otherwise people could force others to have lower interest.
+            // other logic idea: set rate to current rate
             s_userInterestRate[_recipient] = s_userInterestRate[_sender];
         }
         return super.transferFrom(_sender, _recipient, _amount);
@@ -194,12 +208,24 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         s_userLastUpdatedTimestamp[_user] = block.timestamp;
     }
 
-    /*
-     * @notice Get the interest rate for the user
-     * @param _user The user to get the interest rate for
-     * @return The interest rate for the user
+    /**
+     * @dev returns the global interest rate of the token for future depositors
+     * @return s_interestRate
+     *
      */
-    function getInterestRate(address _user) external view returns (uint256) {
+    function getInterestRate() external view returns (uint256) {
+        return s_interestRate;
+    }
+
+    /**
+     * @dev returns the interest rate of the user
+     * @param _user the address of the user
+     * @return s_userInterestRate[_user] the interest rate of the user
+     *
+     */
+    function getUserInterestRate(
+        address _user
+    ) external view returns (uint256) {
         return s_userInterestRate[_user];
     }
 }
