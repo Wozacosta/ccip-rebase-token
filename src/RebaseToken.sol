@@ -108,6 +108,57 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
     }
 
     /**
+     * @dev transfers tokens from the sender to the recipient. This function also mints any accrued interest since the last time the user's balance was updated.
+     * @param _recipient the address of the recipient
+     * @param _amount the amount of tokens to transfer
+     * @return true if the transfer was successful
+     *
+     */
+    function transfer(
+        address _recipient,
+        uint256 _amount
+    ) public override returns (bool) {
+        // accumulates the balance of the user so it is up to date with any interest accumulated.
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(msg.sender);
+        }
+        _mintAccruedInterest(msg.sender);
+        _mintAccruedInterest(_recipient);
+        if (balanceOf(_recipient) == 0) {
+            // Update the users interest rate only if they have not yet got one (or they tranferred/burned all their tokens). Otherwise people could force others to have lower interest.
+            s_userInterestRate[_recipient] = s_userInterestRate[msg.sender];
+            // NOTE: doing it in other cases would be an attack vector to lower the interest rate of others.
+        }
+        return super.transfer(_recipient, _amount);
+    }
+
+    /**
+     * @dev transfers tokens from the sender to the recipient. This function also mints any accrued interest since the last time the user's balance was updated.
+     * @param _sender the address of the sender
+     * @param _recipient the address of the recipient
+     * @param _amount the amount of tokens to transfer
+     * @return true if the transfer was successful
+     *
+     */
+    function transferFrom(
+        address _sender,
+        address _recipient,
+        uint256 _amount
+    ) public override returns (bool) {
+        if (_amount == type(uint256).max) {
+            _amount = balanceOf(_sender);
+        }
+        // accumulates the balance of the user so it is up to date with any interest accumulated.
+        _mintAccruedInterest(_sender);
+        _mintAccruedInterest(_recipient);
+        if (balanceOf(_recipient) == 0) {
+            // Update the users interest rate only if they have not yet got one (or they tranferred/burned all their tokens). Otherwise people could force others to have lower interest.
+            s_userInterestRate[_recipient] = s_userInterestRate[_sender];
+        }
+        return super.transferFrom(_sender, _recipient, _amount);
+    }
+
+    /**
      * @dev returns the interest accrued since the last update of the user's balance - aka since the last time the interest accrued was minted to the user.
      * @return linearInterest the interest accrued since the last update
      *
