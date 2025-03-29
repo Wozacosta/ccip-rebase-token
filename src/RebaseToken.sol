@@ -3,6 +3,8 @@
 pragma solidity ^0.8.24;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 
 /*
  * @title RebaseToken
@@ -11,7 +13,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
  * @notice The interest rate in the smart contract can only decrease
  * @notice Each user will have their own interest rate that is the global one at the time of deposit
  */
-contract RebaseToken is ERC20 {
+contract RebaseToken is ERC20, Ownable, AccessControl {
     error RebaseToken__InterestRateCanOnlyDecrease(
         uint256 oldInterestRate,
         uint256 newInterestRate
@@ -22,13 +24,22 @@ contract RebaseToken is ERC20 {
     /////////////////////
 
     uint256 private constant PRECISION_FACTOR = 1e18; // Used to handle fixed-point calculations
+    bytes32 private constant MINT_AND_BURN_ROLE =
+        keccak256("MINT_AND_BURN_ROLE"); // Role for minting and burning tokens (the pool and vault contracts)
     uint256 private s_interestRate = 5e10; // rate per unit of time (seconds)
     mapping(address => uint256) private s_userInterestRate;
     mapping(address => uint256) private s_userLastUpdatedTimestamp;
 
+    /////////////////////
+    // Events
+    /////////////////////
     event InterestRateSet(uint256 newInterestRate);
 
-    constructor() ERC20("Rebase Token", "RBT") {}
+    /////////////////////
+    // Constructor
+    /////////////////////
+
+    constructor() Ownable(msg.sender) ERC20("RebaseToken", "RBT") {}
 
     /*
      * @notice Set the interest rate for the smart contract
@@ -55,6 +66,25 @@ contract RebaseToken is ERC20 {
         _mintAccruedInterest(_to);
         s_userInterestRate[_to] = s_interestRate;
         _mint(_to, _amount);
+    }
+
+    //
+    /// @notice Burns tokens from the sender.
+    /// @param _from The address to burn the tokens from.
+    /// @param _value The number of tokens to be burned
+    /// @dev this function decreases the total supply.
+    function burn(
+        address _from,
+        uint256 _value
+    ) public onlyRole(MINT_AND_BURN_ROLE) {
+        if (_value == type(uint256).max) {
+            // this avoids potential dust leftovers
+            _burn(_from, balanceOf(_from));
+            return;
+        }
+        // Mints any existing interest that has accrued since the last time the user's balance was updated.
+        _mintAccruedInterest(_from);
+        _burn(_from, _value);
     }
 
     /**
@@ -96,19 +126,21 @@ contract RebaseToken is ERC20 {
     /**
      * @dev accumulates the accrued interest of the user to the principal balance. This function mints the users accrued interest since they last transferred or bridged tokens.
      * @param _user the address of the user for which the interest is being minted
+     *
      */
     function _mintAccruedInterest(address _user) internal {
-        // principle balance -> find their current balance of rebasetoken that have been minted to the user
-        uint256 balance = balanceOf(_user);
-        // calculate their current balance including any interest -> balanceOf
-        // calculate the number of tokens that need to be minted to the user
-        // call _mint to mint the tokens to the user
-        // set the users last updated timestamp
-        s_userLastUpdatedTimestamp[_user] = block.timestamp;
+        // Get the user's previous principal balance. The amount of tokens they had last time their interest was minted to them.
+        uint256 previousPrincipalBalance = super.balanceOf(_user);
 
-        uint256 interestRate = s_userInterestRate[_user];
-        uint256 interest = (balance * interestRate) / 1e18;
-        _mint(_user, interest);
+        // Calculate the accrued interest since the last accumulation
+        // `balanceOf` uses the user's interest rate and the time since their last update to get the updated balance
+        uint256 currentBalance = balanceOf(_user);
+        uint256 balanceIncrease = currentBalance - previousPrincipalBalance;
+
+        // Mint an amount of tokens equivalent to the interest accrued
+        _mint(_user, balanceIncrease);
+        // Update the user's last updated timestamp to reflect this most recent time their interest was minted to them.
+        s_userLastUpdatedTimestamp[_user] = block.timestamp;
     }
 
     /*
