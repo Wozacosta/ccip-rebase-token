@@ -41,12 +41,25 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
 
     constructor() Ownable(msg.sender) ERC20("RebaseToken", "RBT") {}
 
+    /////////////////////
+    // Functions
+    /////////////////////
+
+    /**
+     * @dev grants the mint and burn role to an address. This is only called by the protocol owner.
+     * @param _address the address to grant the role to
+     *
+     */
+    function grantMintAndBurnRole(address _address) external onlyOwner {
+        _grantRole(MINT_AND_BURN_ROLE, _address);
+    }
+
     /*
      * @notice Set the interest rate for the smart contract
      * @param _newInterestRate The new interest rate for the smart contract
      * @dev The interest rate can only decrease
      */
-    function setInterestRate(uint256 _newInterestRate) external {
+    function setInterestRate(uint256 _newInterestRate) external onlyOwner {
         if (_newInterestRate >= s_interestRate) {
             revert RebaseToken__InterestRateCanOnlyDecrease(
                 s_interestRate,
@@ -69,15 +82,21 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         return super.balanceOf(_user);
     }
 
-    /*
-     * @notice Mint user tokens when they deposit into the vault
-     * @param _to The user to mint tokens to
-     * @param _amount The amount of tokens to mint
-     */
-    function mint(address _to, uint256 _amount) external {
+    /// @notice Mints new tokens for a given address. Called when a user either deposits or bridges tokens to this chain.
+    /// @param _to The address to mint the tokens to.
+    /// @param _value The number of tokens to mint.
+    /// @param _userInterestRate The interest rate of the user. This is either the contract interest rate if the user is depositing or the user's interest rate from the source token if the user is bridging.
+    /// @dev this function increases the total supply.
+    function mint(
+        address _to,
+        uint256 _value,
+        uint256 _userInterestRate
+    ) public onlyRole(MINT_AND_BURN_ROLE) {
+        // Mints any existing interest that has accrued since the last time the user's balance was updated.
         _mintAccruedInterest(_to);
-        s_userInterestRate[_to] = s_interestRate;
-        _mint(_to, _amount);
+        // Sets the users interest rate to either their bridged value if they are bridging or to the current interest rate if they are depositing.
+        s_userInterestRate[_to] = _userInterestRate;
+        _mint(_to, _value);
     }
 
     //
