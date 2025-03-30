@@ -99,7 +99,6 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         _mint(_to, _value);
     }
 
-    //
     /// @notice Burns tokens from the sender.
     /// @param _from The address to burn the tokens from.
     /// @param _value The number of tokens to be burned
@@ -108,11 +107,6 @@ contract RebaseToken is ERC20, Ownable, AccessControl {
         address _from,
         uint256 _value
     ) public onlyRole(MINT_AND_BURN_ROLE) {
-        if (_value == type(uint256).max) {
-            // this avoids potential dust leftovers
-            _burn(_from, balanceOf(_from));
-            return;
-        }
         // Mints any existing interest that has accrued since the last time the user's balance was updated.
         _mintAccruedInterest(_from);
         _burn(_from, _value);
